@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 
 // 类型定义
@@ -23,6 +23,11 @@ interface HistoryItem extends SummarizeResult {
   createdAt: string;
 }
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 type Status = "idle" | "processing" | "done" | "error";
 
 // 步骤配置
@@ -43,6 +48,18 @@ export default function SummarizePage() {
   const [result, setResult] = useState<SummarizeResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showTranscript, setShowTranscript] = useState(false);
+
+  // 聊天相关状态
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // 滚动到聊天底部
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   // 加载历史记录
   useEffect(() => {
@@ -137,6 +154,73 @@ export default function SummarizePage() {
   const clearHistory = () => {
     setHistory([]);
     localStorage.removeItem("bilibili-summary-history");
+  };
+
+  // 发送聊天消息
+  const handleChatSubmit = async () => {
+    if (!chatInput.trim() || !result || chatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch("/api/chat-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId: result.videoInfo.url,
+          videoTitle: result.videoInfo.title,
+          transcript: result.transcript,
+          summary: result.summary,
+          messages: chatMessages,
+          question: userMessage,
+        }),
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("无法读取响应");
+
+      const decoder = new TextDecoder();
+      let assistantMessage = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split("\n\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) {
+              assistantMessage += data.content;
+              setChatMessages((prev) => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage?.role === "assistant") {
+                  lastMessage.content = assistantMessage;
+                  return newMessages;
+                }
+                return [...newMessages, { role: "assistant" as const, content: assistantMessage }];
+              });
+            }
+            if (data.error) {
+              throw new Error(data.error);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `错误: ${err instanceof Error ? err.message : "对话失败"}` },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   // 获取当前步骤索引
@@ -251,6 +335,78 @@ export default function SummarizePage() {
               {showTranscript && (
                 <div className="mt-4 bg-slate-700/50 rounded-lg p-4 max-h-96 overflow-y-auto text-sm text-slate-300 whitespace-pre-wrap">
                   {result.transcript}
+                </div>
+              )}
+            </div>
+
+            {/* AI问答区域 */}
+            <div className="mt-6 pt-6 border-t border-slate-700">
+              <button
+                onClick={() => {
+                  setShowChat(!showChat);
+                  if (!showChat) setChatMessages([]);
+                }}
+                className="flex items-center gap-2 text-green-400 hover:text-green-300 mb-4"
+              >
+                {showChat ? "▼" : "▶"} 🤖 AI问答 - 针对视频内容提问
+              </button>
+
+              {showChat && (
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  {/* 聊天消息列表 */}
+                  <div className="max-h-80 overflow-y-auto mb-4 space-y-3">
+                    {chatMessages.length === 0 && (
+                      <div className="text-slate-400 text-sm text-center py-4">
+                        可以问我关于这个视频的任何问题，例如：
+                        <br />• 视频的主要观点是什么？
+                        <br />• 有哪些关键细节？
+                      </div>
+                    )}
+                    {chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                            msg.role === "user"
+                              ? "bg-blue-600 text-white"
+                              : "bg-slate-600 text-slate-100"
+                          }`}
+                        >
+                          <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-slate-600 rounded-lg px-4 py-2 text-slate-300">
+                          <span className="animate-pulse">正在思考...</span>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* 输入框 */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleChatSubmit()}
+                      placeholder="输入你的问题..."
+                      className="flex-1 px-4 py-2 bg-slate-700 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none text-white placeholder-slate-400 text-sm"
+                      disabled={chatLoading}
+                    />
+                    <button
+                      onClick={handleChatSubmit}
+                      disabled={chatLoading || !chatInput.trim()}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors"
+                    >
+                      发送
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
