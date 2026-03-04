@@ -44,6 +44,12 @@ export default function Home() {
           >
             🔥 问题发现 (Reddit) &rarr;
           </Link>
+          <Link
+            href="/summarize"
+            className="rounded-md bg-pink-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-pink-500"
+          >
+            🎬 B站视频总结 &rarr;
+          </Link>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
           <a
