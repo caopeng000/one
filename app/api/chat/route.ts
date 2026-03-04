@@ -21,6 +21,39 @@ const openai = new OpenAI({
   },
 });
 
+// 定义工具
+const tools = [
+  {
+    type: "function" as const,
+    function: {
+      name: "get_current_weather",
+      description: "Get the current weather in a given location",
+      parameters: {
+        type: "object",
+        properties: {
+          location: {
+            type: "string",
+            description: "The city and state, e.g. San Francisco, CA",
+          },
+          unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+        },
+        required: ["location"],
+      },
+    },
+  },
+];
+
+// 模拟天气查询函数
+function getCurrentWeather(location: string, unit = "celsius") {
+  const weatherInfo = {
+    location: location,
+    temperature: "22",
+    unit: unit,
+    forecast: ["sunny", "windy"],
+  };
+  return JSON.stringify(weatherInfo);
+}
+
 export async function POST(req: Request) {
   const { messages } = await req.json();
 
@@ -32,36 +65,95 @@ export async function POST(req: Request) {
   }
 
   try {
+    // 第一次调用：不使用流式，以便更简单地处理 Function Calling
+    // 这是一个折衷方案：为了简化 Demo 代码，牺牲了第一次回复的打字机效果
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      stream: true,
       messages: messages,
+      tools: tools,
+      tool_choice: "auto", // auto is default, but we'll be explicit
     });
 
-    // 创建一个 ReadableStream 来转发 OpenAI 的流
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of response) {
-            const content = chunk.choices[0]?.delta?.content || "";
-            if (content) {
-              controller.enqueue(new TextEncoder().encode(content));
-            }
-          }
-          controller.close();
-        } catch (e) {
-          console.error("Stream Error:", e);
-          controller.error(e);
+    const responseMessage = response.choices[0].message;
+
+    // 检查是否有 Function Call
+    const toolCalls = responseMessage.tool_calls;
+    if (toolCalls) {
+      // 将助手的回复（包含 tool_calls）添加到消息历史中
+      messages.push(responseMessage);
+
+      // 处理每个工具调用
+      for (const toolCall of toolCalls) {
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+
+        let functionResponse;
+        if (functionName === "get_current_weather") {
+          functionResponse = getCurrentWeather(
+            functionArgs.location,
+            functionArgs.unit
+          );
+        } else {
+          functionResponse = JSON.stringify({ error: "Function not found" });
         }
-      },
-    });
 
-    return new Response(stream, {
-      headers: { "Content-Type": "text/event-stream" },
-    });
+        // 将工具调用的结果添加到消息历史中
+        messages.push({
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: functionName,
+          content: functionResponse,
+        });
+      }
+
+      // 第二次调用：带上工具调用的结果，这次使用流式返回给用户
+      const secondResponse = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: messages,
+        stream: true,
+      });
+
+      // 创建流式响应
+      const stream = new ReadableStream({
+        async start(controller) {
+            try {
+                for await (const chunk of secondResponse) {
+                    const content = chunk.choices[0]?.delta?.content || "";
+                    if (content) {
+                        controller.enqueue(new TextEncoder().encode(content));
+                    }
+                }
+                controller.close();
+            } catch (e) {
+                console.error("Stream Error (Second Response):", e);
+                controller.error(e);
+            }
+        },
+      });
+
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+
+    } else {
+      // 如果没有 Function Call，直接返回刚才获取的内容
+      // 为了保持前端兼容性，我们把文本转成流
+      const content = responseMessage.content || "";
+      const stream = new ReadableStream({
+        async start(controller) {
+            // 模拟流式输出，虽然是一次性给出的
+            controller.enqueue(new TextEncoder().encode(content));
+            controller.close();
+        },
+      });
+      
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }
+
   } catch (error) {
     console.error("OpenAI API Error:", error);
-    // 返回具体的错误信息以便调试
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: errorMessage }), { 
       status: 500,

@@ -38,6 +38,12 @@ export default function Home() {
           >
             AI Chat (SSE Stream) &rarr;
           </Link>
+          <Link
+            href="/problems"
+            className="rounded-md bg-orange-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500"
+          >
+            🔥 问题发现 (Reddit) &rarr;
+          </Link>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
           <a
