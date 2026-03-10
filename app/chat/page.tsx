@@ -92,7 +92,7 @@ export default function ChatPage() {
         {messages.length === 0 && (
           <div className="text-center text-gray-500 mt-20">
             <p>👋 Say hello to start chatting!</p>
-            <p className="text-xs mt-2">(Set OPENAI_API_KEY in .env.local for real AI)</p>
+            <p className="text-xs mt-2">(使用阿里云千问 API，Key 已配置在 .env.local)</p>
           </div>
         )}
         

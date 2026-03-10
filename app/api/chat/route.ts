@@ -11,6 +11,7 @@ const agent = new HttpsProxyAgent(proxyUrl);
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "dummy-key",
+  baseURL: process.env.OPENAI_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
   // 自定义 fetch 函数以支持代理
   // @ts-expect-error: node-fetch types are slightly incompatible with web fetch types expected by OpenAI, but it works at runtime
   fetch: (url, init) => {
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   // 如果没有配置真实的 Key，返回模拟数据
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "dummy-key") {
     return new Response(simulateStream(), {
       headers: { "Content-Type": "text/event-stream" },
     });
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
     // 第一次调用：不使用流式，以便更简单地处理 Function Calling
     // 这是一个折衷方案：为了简化 Demo 代码，牺牲了第一次回复的打字机效果
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "qwen-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto", // auto is default, but we'll be explicit
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
 
       // 第二次调用：带上工具调用的结果，这次使用流式返回给用户
       const secondResponse = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: "qwen-turbo",
         messages: messages,
         stream: true,
       });
