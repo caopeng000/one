@@ -48,7 +48,19 @@ export default function Home() {
             href="/summarize"
             className="rounded-md bg-pink-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-pink-500"
           >
-            🎬 B站视频总结 &rarr;
+            🎬 B 站视频总结 &rarr;
+          </Link>
+          <Link
+            href="/video-translator"
+            className="rounded-md bg-amber-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-500"
+          >
+            🎥 YouTube 视频中文化 &rarr;
+          </Link>
+          <Link
+            href="/langchain"
+            className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+          >
+            🦜️🔗 LangChain 学习脚手架 &rarr;
           </Link>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
