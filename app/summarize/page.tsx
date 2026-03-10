@@ -55,6 +55,12 @@ export default function SummarizePage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+
+  // 同步 ref 和 state
+  useEffect(() => {
+    messagesRef.current = chatMessages;
+  }, [chatMessages]);
 
   // 滚动到聊天底部
   useEffect(() => {
@@ -162,7 +168,10 @@ export default function SummarizePage() {
 
     const userMessage = chatInput.trim();
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+
+    // 立即更新本地消息列表
+    const newUserMessage: ChatMessage = { role: "user", content: userMessage };
+    setChatMessages((prev) => [...prev, newUserMessage]);
     setChatLoading(true);
 
     try {
@@ -174,7 +183,7 @@ export default function SummarizePage() {
           videoTitle: result.videoInfo.title,
           transcript: result.transcript,
           summary: result.summary,
-          messages: chatMessages,
+          messages: [...messagesRef.current, newUserMessage],
           question: userMessage,
         }),
       });
